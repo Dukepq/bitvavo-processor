@@ -41,6 +41,8 @@ export type TickerPrice = {
 };
 export type TickerPrices = TickerPrice[];
 
+export type Candle = [string, string, string, string, string, string];
+
 /* --------------------------------------- */
 // synchronization endpoints:
 /* --------------------------------------- */

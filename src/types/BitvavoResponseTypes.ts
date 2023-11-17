@@ -56,5 +56,10 @@ type asset = {
   depositFee: string;
   depositConfirmations: number;
   depositStatus: "OK" | "MAINTENANCE" | "DELISTED";
+  withdrawalFee: string;
+  withdrawalMinAmount: string;
+  withdrawalStatus: "OK" | "MAINTENANCE" | "DELISTED";
+  networks: string[];
+  message: string;
 };
 type assets = asset[];

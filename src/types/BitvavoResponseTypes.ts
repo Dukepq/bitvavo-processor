@@ -1,4 +1,8 @@
-type Ticker24hEntry = {
+/* --------------------------------------- */
+// market endpoints:
+/* --------------------------------------- */
+
+export type Ticker24h = {
   market: string;
   open: string;
   high: string;
@@ -13,7 +17,7 @@ type Ticker24hEntry = {
   timestamp: number;
 };
 
-export type Ticker24h = Ticker24hEntry[];
+export type Ticker24hArray = Ticker24h[];
 
 export type OrderBook = {
   market: string;
@@ -22,22 +26,26 @@ export type OrderBook = {
   asks: string[][];
 };
 
-type TickerBookEntry = {
+export type TickerBook = {
   market: string;
   bid: string;
   bidSize: string;
   ask: string;
   askSize: string;
 };
-export type TickerBooks = TickerBookEntry[];
+export type TickerBooks = TickerBook[];
 
-type TickerPrice = {
+export type TickerPrice = {
   market: string;
   price: string;
 };
 export type TickerPrices = TickerPrice[];
 
-type Market = {
+/* --------------------------------------- */
+// synchronization endpoints:
+/* --------------------------------------- */
+
+export type Market = {
   market: string;
   status: "trading" | "halted" | "auction";
   base: string;
@@ -49,7 +57,7 @@ type Market = {
 };
 export type Markets = Market[];
 
-type asset = {
+export type Asset = {
   symbol: string;
   name: string;
   decimals: number;
@@ -62,4 +70,4 @@ type asset = {
   networks: string[];
   message: string;
 };
-type assets = asset[];
+export type Assets = Asset[];

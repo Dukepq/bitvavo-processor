@@ -1,4 +1,3 @@
-import "./types/BitvavoResponseTypes";
 import express from "express";
 import { Request, Response } from "express";
 const app = express();
@@ -19,9 +18,6 @@ app.listen(PORT, () => {
   console.log(process.env.PORT);
 });
 
-type asset = {};
-type assets = asset[];
-
 type pair = {};
 type pairs = pair[];
 
@@ -30,10 +26,8 @@ class Market {
   constructor() {
     this.pairs = [];
   }
-  public async getPairs() {
-    const marketsData = await fetch("https://api.bitvavo.com/v2/markets");
-    const markets: Markets = await marketsData.json();
-  }
+
+  public async getPairs() {}
 
   private update() {
     // attempts to update all market data

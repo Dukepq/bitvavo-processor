@@ -7,13 +7,25 @@ import {
   Ticker24h,
   Candle,
 } from "./types/BitvavoResponseTypes";
+import addAsks, { addBids } from "./utils/addValueArrayToLimit";
 import fetchWithTimeout from "./utils/fetchWithTimeout";
 import stringToNum from "./utils/stringToNum";
+
+type OrderBookExtract = {
+  price: number;
+  bestBid: number;
+  bestAsk: number;
+  spread: number;
+  euroBidDepth: number | null;
+  euroAskDepth: number | null;
+} | null;
 
 class BitvavoMarket {
   public assets: { [key: string]: Partial<Asset> & { updatedAt: number } };
   public markets: {
-    [key: string]: Partial<Market & { volume: number }> & { updatedAt: number };
+    [key: string]: Partial<
+      Market & { volume: number; orderBookDerivedData: OrderBookExtract }
+    > & { updatedAt: number };
   };
   public remainingLimit: number | null;
   private initialized: boolean;
@@ -32,7 +44,7 @@ class BitvavoMarket {
     this.prune();
   }
 
-  private async init() {
+  async init() {
     try {
       const resolved = await Promise.all([
         this.updateMarkets(),
@@ -46,35 +58,74 @@ class BitvavoMarket {
     }
   }
 
-  public async update() {
+  async update() {
     // await this.updateVolumeOnAllMarkets(1000 * 60 * 6);
-    this.updateTimeout = setTimeout(this.update, 1000 * 60 * 60);
+    console.log("finished updating volume...");
+    await this.updateAllOrderBookDerivedValues();
+    console.log("finished updating order book derived values...");
+    console.log(this.markets);
+    console.log("setting timeout for next update...");
+    this.updateTimeout = setTimeout(this.update.bind(this), 1000 * 30);
   }
 
-  public async extractFromOrderBook(market: string, depth: number) {
-    const book = await this.fetchOrderBook(market);
-    if (!book) return null;
-    const { bids, asks } = book;
-    const bestBid = stringToNum(bids[0][0]);
-    const bestAsk = stringToNum(asks[0][0]);
-    const price = bestBid;
-    const spread = bestBid / bestAsk;
-    let euroBidDepth = 0;
-    for (let bid of bids) {
-      const bidValue = bid[0];
-      const bidAmount = bid[1];
+  async updateAllOrderBookDerivedValues() {
+    const promiseArray: Promise<{
+      market: string;
+      promise: OrderBookExtract;
+    }>[] = [];
+    for (const entry in this.markets) {
+      promiseArray.push(
+        (async (): Promise<{
+          market: string;
+          promise: OrderBookExtract;
+        }> => {
+          const promise = await this.extractFromOrderBook(entry, 0.05);
+          if (promise === null) throw new Error("something went wrong!");
+          return { market: entry, promise };
+        })()
+      );
     }
-    return {
-      [market]: {
+    const settledPromises = await Promise.allSettled(promiseArray);
+    for (let entry of settledPromises) {
+      if (entry.status !== "fulfilled") return;
+      const { market, promise } = entry.value;
+      if (this.markets[market]) {
+        console.log("updating...");
+        this.markets[market].orderBookDerivedData = promise;
+      }
+    }
+    return;
+  }
+
+  async extractFromOrderBook(
+    market: string,
+    depth: number
+  ): Promise<OrderBookExtract> {
+    try {
+      const book = await this.fetchOrderBook(market);
+      if (!book) return null;
+      const { bids, asks } = book;
+      const bestBid = stringToNum(bids[0][0]);
+      const bestAsk = stringToNum(asks[0][0]);
+      const price = bestBid;
+      const spread = bestBid / bestAsk;
+      const euroBidDepth = addBids(bids, depth);
+      const euroAskDepth = addAsks(asks, depth);
+      return {
         price,
         bestBid,
         bestAsk,
         spread,
-      },
-    };
+        euroBidDepth,
+        euroAskDepth,
+      };
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
   }
 
-  public async updateMarkets(): Promise<{ success: boolean }> {
+  async updateMarkets(): Promise<{ success: boolean }> {
     try {
       const markets = await this.fetchMarkets();
       if (!markets) return { success: false };
@@ -90,7 +141,7 @@ class BitvavoMarket {
     }
   }
 
-  public async updateAssets(): Promise<{ success: boolean }> {
+  async updateAssets(): Promise<{ success: boolean }> {
     try {
       const assets = await this.fetchAssets();
       if (!assets) return { success: false };
@@ -105,7 +156,7 @@ class BitvavoMarket {
     }
   }
 
-  public async updateVolumeOnAllMarkets(period: number) {
+  async updateVolumeOnAllMarkets(period: number) {
     const promiseArray: Promise<{ market: string; promise: number }>[] = [];
     for (let entry in this.markets) {
       promiseArray.push(
@@ -118,7 +169,6 @@ class BitvavoMarket {
     }
     const settledPromises = await Promise.allSettled(promiseArray);
     for (let entry of settledPromises) {
-      console.log(entry);
       if (entry.status !== "fulfilled") return;
       const { market, promise } = entry.value;
       if (this.markets[market]) {
@@ -128,7 +178,7 @@ class BitvavoMarket {
     return;
   }
 
-  public async getAverageVolumeByMarket(
+  async getAverageVolumeByMarket(
     market: string,
     period: number
   ): Promise<number | null> {
@@ -150,7 +200,7 @@ class BitvavoMarket {
     }
   }
 
-  private prune() {
+  prune() {
     if (!this.initialized) {
       console.error("not initialized");
       this.pruneTimeout = setTimeout(() => this.prune(), 1000 * 60 * 5);
@@ -168,7 +218,7 @@ class BitvavoMarket {
     this.pruneTimeout = setTimeout(() => this.prune(), 1000 * 60 * 5);
   }
 
-  public async fetchMarkets(): Promise<Market[] | null> {
+  async fetchMarkets(): Promise<Market[] | null> {
     const response = await fetchWithTimeout(
       "https://api.bitvavo.com/v2/markets",
       { timer: this.fetchTimeout }
@@ -181,7 +231,7 @@ class BitvavoMarket {
     return markets;
   }
 
-  public async fetchAssets(): Promise<Asset[] | null> {
+  async fetchAssets(): Promise<Asset[] | null> {
     const response = await fetchWithTimeout(
       "https://api.bitvavo.com/v2/assets",
       { timer: this.fetchTimeout }
@@ -194,7 +244,7 @@ class BitvavoMarket {
     return assets;
   }
 
-  public async fetchTickersData(): Promise<Ticker24h[] | null> {
+  async fetchTickersData(): Promise<Ticker24h[] | null> {
     const response = await fetchWithTimeout(
       "https://api.bitvavo.com/v2/ticker/24h",
       { timer: this.fetchTimeout }
@@ -207,7 +257,7 @@ class BitvavoMarket {
     return tickers;
   }
 
-  public async fetchTickerBooks(): Promise<TickerBook[] | null> {
+  async fetchTickerBooks(): Promise<TickerBook[] | null> {
     const response = await fetchWithTimeout(
       "https://api.bitvavo.com/v2/ticker/book",
       { timer: this.fetchTimeout }
@@ -220,7 +270,7 @@ class BitvavoMarket {
     return tickerBooks;
   }
 
-  public async fetchOrderBook(market: string): Promise<OrderBook | null> {
+  async fetchOrderBook(market: string): Promise<OrderBook | null> {
     const response = await fetchWithTimeout(
       `https://api.bitvavo.com/v2/${market}/book`,
       { timer: this.fetchTimeout }
@@ -233,7 +283,7 @@ class BitvavoMarket {
     return book;
   }
 
-  public async fetchTickerPrices(): Promise<TickerPrice[] | null> {
+  async fetchTickerPrices(): Promise<TickerPrice[] | null> {
     const response = await fetchWithTimeout(
       "https://api.bitvavo.com/v2/ticker/price",
       { timer: this.fetchTimeout }
@@ -246,7 +296,7 @@ class BitvavoMarket {
     return tickers;
   }
 
-  public async fetchCandles(
+  async fetchCandles(
     market: string,
     period: number = 360000
   ): Promise<Candle[]> {
@@ -264,7 +314,7 @@ class BitvavoMarket {
     return tickers;
   }
 
-  private extractLimitFromHeaders(response: Response): number | null {
+  extractLimitFromHeaders(response: Response): number | null {
     const _rateLimitRemaining = response.headers.get(
       "bitvavo-ratelimit-remaining"
     );
@@ -274,7 +324,7 @@ class BitvavoMarket {
     return rateLimitRemaining;
   }
 
-  public updateLimitRemaining(response: Response): void {
+  updateLimitRemaining(response: Response): void {
     const rateLimitRemaining = this.extractLimitFromHeaders(response);
     if (rateLimitRemaining) this.remainingLimit = rateLimitRemaining;
     else
@@ -283,7 +333,7 @@ class BitvavoMarket {
       );
   }
 
-  public sufficientRemainingLimit(cost: number): boolean {
+  sufficientRemainingLimit(cost: number): boolean {
     const limit = this.remainingLimit;
     if (limit && limit < cost + 10) return false;
     else return true;

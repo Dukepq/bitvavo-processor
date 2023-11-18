@@ -19,11 +19,13 @@ export type Ticker24h = {
 
 export type Ticker24hArray = Ticker24h[];
 
+type StringTuple = [string, string];
+
 export type OrderBook = {
   market: string;
   nonce: number;
-  bids: string[][];
-  asks: string[][];
+  bids: [string, string][];
+  asks: [string, string][];
 };
 
 export type TickerBook = {

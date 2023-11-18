@@ -200,7 +200,7 @@ class BitvavoMarket {
     }
   }
 
-  prune() {
+  private prune() {
     if (!this.initialized) {
       console.error("not initialized");
       this.pruneTimeout = setTimeout(() => this.prune(), 1000 * 60 * 5);
@@ -314,7 +314,7 @@ class BitvavoMarket {
     return tickers;
   }
 
-  extractLimitFromHeaders(response: Response): number | null {
+  private extractLimitFromHeaders(response: Response): number | null {
     const _rateLimitRemaining = response.headers.get(
       "bitvavo-ratelimit-remaining"
     );
@@ -333,7 +333,7 @@ class BitvavoMarket {
       );
   }
 
-  sufficientRemainingLimit(cost: number): boolean {
+  private sufficientRemainingLimit(cost: number): boolean {
     const limit = this.remainingLimit;
     if (limit && limit < cost + 10) return false;
     else return true;

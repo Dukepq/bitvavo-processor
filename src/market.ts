@@ -12,6 +12,7 @@ import fetchWithTimeout from "./utils/fetchWithTimeout";
 import stringToNum from "./utils/stringToNum";
 
 type OrderBookExtract = {
+  market: string;
   price: number;
   bestBid: number;
   bestAsk: number;
@@ -23,9 +24,9 @@ type OrderBookExtract = {
 class BitvavoMarket {
   public assets: { [key: string]: Partial<Asset> & { updatedAt: number } };
   public markets: {
-    [key: string]: Partial<
-      Market & { volume: number; orderBookDerivedData: OrderBookExtract }
-    > & { updatedAt: number };
+    [key: string]: Partial<Market & { volume: number }> & {
+      updatedAt: number;
+    } & Partial<OrderBookExtract>;
   };
   public remainingLimit: number | null;
   private initialized: boolean;
@@ -33,7 +34,7 @@ class BitvavoMarket {
   private updateTimeout: NodeJS.Timeout | null;
   public fetchTimeout: number;
   constructor() {
-    this.fetchTimeout = 5000;
+    this.fetchTimeout = 10000;
     this.pruneTimeout = null;
     this.updateTimeout = null;
     this.assets = {};
@@ -41,59 +42,64 @@ class BitvavoMarket {
     this.remainingLimit = null;
     this.initialized = false;
     this.init();
-    this.prune();
+    // this.prune();
   }
 
   async init() {
     try {
-      const resolved = await Promise.all([
-        this.updateMarkets(),
-        this.updateAssets(),
-      ]);
+      await Promise.all([this.updateMarkets(), this.updateAssets()]);
       this.initialized = true;
       this.update();
     } catch (err) {
-      console.error("Something went wrong while updating markets");
-      setTimeout(this.init, 1000 * 30);
+      console.error(
+        "Something went wrong while trying to updating markets: " + err
+      );
+      console.log("retrying initiation in 30s");
+      setTimeout(this.init.bind(this), 1000 * 30);
     }
   }
 
   async update() {
-    // await this.updateVolumeOnAllMarkets(1000 * 60 * 6);
+    await this.updateVolumeOnAllMarkets(1000 * 60 * 6);
     console.log("finished updating volume...");
     await this.updateAllOrderBookDerivedValues();
     console.log("finished updating order book derived values...");
-    console.log(this.markets);
+    for (const pair in this.markets) {
+      console.log(this.markets[pair]);
+    }
     console.log("setting timeout for next update...");
-    this.updateTimeout = setTimeout(this.update.bind(this), 1000 * 30);
+    this.updateTimeout = setTimeout(this.update.bind(this), 1000 * 60);
   }
 
   async updateAllOrderBookDerivedValues() {
-    const promiseArray: Promise<{
-      market: string;
-      promise: OrderBookExtract;
-    }>[] = [];
-    for (const entry in this.markets) {
-      promiseArray.push(
-        (async (): Promise<{
-          market: string;
-          promise: OrderBookExtract;
-        }> => {
-          const promise = await this.extractFromOrderBook(entry, 0.05);
-          if (promise === null) throw new Error("something went wrong!");
-          return { market: entry, promise };
-        })()
-      );
+    /* ---------WORKS--------- */
+    for (let entry in this.markets) {
+      const promise = await this.extractFromOrderBook(entry, 0.05);
+      if (!promise) continue;
+      const { market, ...rest } = promise;
+      Object.assign(this.markets[entry], rest);
+      console.log(entry);
     }
-    const settledPromises = await Promise.allSettled(promiseArray);
-    for (let entry of settledPromises) {
-      if (entry.status !== "fulfilled") return;
-      const { market, promise } = entry.value;
-      if (this.markets[market]) {
-        console.log("updating...");
-        this.markets[market].orderBookDerivedData = promise;
-      }
-    }
+    /* ---------WORKS--------- */
+
+    /* ---
+    While occasionaly succeeding in fetching the requested data below method usually
+    runs into errors (Timeout Error) fails to retreive all pairs from Bitvavo, potentially because
+    too much data is requested in too short a timeframe (full order book information of over 200 assets ~20Mb)
+    --- */
+    // const promiseArray: Promise<OrderBookExtract>[] = [];
+    // for (const entry in this.markets) {
+    //   const promise = this.extractFromOrderBook(entry, 0.05);
+    //   promiseArray.push(promise);
+    // }
+    // const settledPromises = await Promise.allSettled(promiseArray);
+    // for (let entry of settledPromises) {
+    //   if (entry.status !== "fulfilled" || !entry.value) return;
+    //   const { market, ...rest } = entry.value;
+    //   console.log(market, !!this.markets[market]);
+    //   Object.assign(this.markets[market], rest);
+    // }
+    /* --------- */
     return;
   }
 
@@ -112,6 +118,7 @@ class BitvavoMarket {
       const euroBidDepth = addBids(bids, depth);
       const euroAskDepth = addAsks(asks, depth);
       return {
+        market,
         price,
         bestBid,
         bestAsk,
@@ -126,50 +133,44 @@ class BitvavoMarket {
   }
 
   async updateMarkets(): Promise<{ success: boolean }> {
-    try {
-      const markets = await this.fetchMarkets();
-      if (!markets) return { success: false };
-      for (let entry of markets) {
-        const { market, ...rest } = entry;
-        if (entry.status !== "trading") continue;
-        this.markets[market] = { ...rest, updatedAt: Date.now() };
-      }
-      return { success: true };
-    } catch (err) {
-      console.error(err);
-      return { success: false };
+    const markets = await this.fetchMarkets();
+    if (!markets) return { success: false };
+    for (let entry of markets) {
+      const { market, ...rest } = entry;
+      if (entry.status !== "trading") continue;
+      this.markets[market] = { ...rest, updatedAt: Date.now() };
     }
+    return { success: true };
   }
 
   async updateAssets(): Promise<{ success: boolean }> {
-    try {
-      const assets = await this.fetchAssets();
-      if (!assets) return { success: false };
-      for (let entry of assets) {
-        const { symbol, ...rest } = entry;
-        this.assets[symbol] = { ...rest, updatedAt: Date.now() };
-      }
-      return { success: true };
-    } catch (err) {
-      console.error(err);
-      return { success: false };
+    const assets = await this.fetchAssets();
+    if (!assets) return { success: false };
+    for (let entry of assets) {
+      const { symbol, ...rest } = entry;
+      this.assets[symbol] = { ...rest, updatedAt: Date.now() };
     }
+    return { success: true };
   }
 
   async updateVolumeOnAllMarkets(period: number) {
-    const promiseArray: Promise<{ market: string; promise: number }>[] = [];
+    const promiseArray: Promise<{ market: string; promise: number | null }>[] =
+      [];
     for (let entry in this.markets) {
       promiseArray.push(
-        (async (): Promise<{ market: string; promise: number }> => {
+        (async (): Promise<{ market: string; promise: number | null }> => {
           const promise = await this.getAverageVolumeByMarket(entry, period);
-          if (promise === null) throw new Error("something went wrong");
           return { market: entry, promise };
         })()
       );
     }
     const settledPromises = await Promise.allSettled(promiseArray);
     for (let entry of settledPromises) {
-      if (entry.status !== "fulfilled") return;
+      if (
+        entry.status !== "fulfilled" ||
+        typeof entry.value.promise !== "number"
+      )
+        continue;
       const { market, promise } = entry.value;
       if (this.markets[market]) {
         this.markets[market].volume = promise;
@@ -219,10 +220,7 @@ class BitvavoMarket {
   }
 
   async fetchMarkets(): Promise<Market[] | null> {
-    const response = await fetchWithTimeout(
-      "https://api.bitvavo.com/v2/markets",
-      { timer: this.fetchTimeout }
-    );
+    const response = await fetch("https://api.bitvavo.com/v2/markets");
     if (!response.ok) {
       throw new Error(response.statusText);
     }
@@ -232,10 +230,7 @@ class BitvavoMarket {
   }
 
   async fetchAssets(): Promise<Asset[] | null> {
-    const response = await fetchWithTimeout(
-      "https://api.bitvavo.com/v2/assets",
-      { timer: this.fetchTimeout }
-    );
+    const response = await fetch("https://api.bitvavo.com/v2/assets");
     if (!response.ok) {
       throw new Error(response.statusText);
     }
@@ -273,7 +268,7 @@ class BitvavoMarket {
   async fetchOrderBook(market: string): Promise<OrderBook | null> {
     const response = await fetchWithTimeout(
       `https://api.bitvavo.com/v2/${market}/book`,
-      { timer: this.fetchTimeout }
+      { timer: 500 }
     );
     if (!response.ok) {
       throw new Error(response.statusText);

@@ -8,6 +8,10 @@ import myObj from "./market";
 
 myObj;
 
+// setInterval(() => {
+//   console.log(myObj.markets);
+// }, 5000);
+
 app.get("/ping", (req: Request, res: Response) => {
   res.json({ succes: true, message: "pong" });
 });

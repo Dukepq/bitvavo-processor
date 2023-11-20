@@ -17,8 +17,10 @@ type OrderBookExtract = {
   bestBid: number;
   bestAsk: number;
   spread: number;
-  euroBidDepth: number | null;
-  euroAskDepth: number | null;
+  euroBidDepth?: number | null;
+  euroAskDepth?: number | null;
+  robsB?: number;
+  robsA?: number;
 } | null;
 
 class BitvavoMarket {
@@ -42,7 +44,6 @@ class BitvavoMarket {
     this.remainingLimit = null;
     this.initialized = false;
     this.init();
-    // this.prune();
   }
 
   async init() {
@@ -64,9 +65,6 @@ class BitvavoMarket {
     console.log("finished updating volume...");
     await this.updateAllOrderBookDerivedValues();
     console.log("finished updating order book derived values...");
-    for (const pair in this.markets) {
-      console.log(this.markets[pair]);
-    }
     console.log("setting timeout for next update...");
     this.updateTimeout = setTimeout(this.update.bind(this), 1000 * 60);
   }
@@ -74,11 +72,17 @@ class BitvavoMarket {
   async updateAllOrderBookDerivedValues() {
     /* ---------WORKS--------- */
     for (let entry in this.markets) {
-      const promise = await this.extractFromOrderBook(entry, 0.05);
-      if (!promise) continue;
-      const { market, ...rest } = promise;
+      const orderBookDerivatives = await this.extractFromOrderBook(entry, 0.05);
+      if (!orderBookDerivatives) continue;
+      const { market, ...rest } = orderBookDerivatives;
+      const { euroBidDepth, euroAskDepth, price } = rest;
+      const volume = this.markets[market].volume;
+      if (euroBidDepth && euroAskDepth && volume && price) {
+        rest.robsB = euroBidDepth / (volume * rest.price);
+        rest.robsA = euroAskDepth / (volume * rest.price);
+      }
       Object.assign(this.markets[entry], rest);
-      console.log(entry);
+      this.setUpdateTime(entry);
     }
     /* ---------WORKS--------- */
 
@@ -114,7 +118,7 @@ class BitvavoMarket {
       const bestBid = stringToNum(bids[0][0]);
       const bestAsk = stringToNum(asks[0][0]);
       const price = bestBid;
-      const spread = bestBid / bestAsk;
+      const spread = 1 - bestBid / bestAsk;
       const euroBidDepth = addBids(bids, depth);
       const euroAskDepth = addAsks(asks, depth);
       return {
@@ -138,7 +142,9 @@ class BitvavoMarket {
     for (let entry of markets) {
       const { market, ...rest } = entry;
       if (entry.status !== "trading") continue;
-      this.markets[market] = { ...rest, updatedAt: Date.now() };
+      if (!this.markets[market]) {
+        this.markets[market] = { ...rest, updatedAt: Date.now() };
+      }
     }
     return { success: true };
   }
@@ -174,6 +180,7 @@ class BitvavoMarket {
       const { market, promise } = entry.value;
       if (this.markets[market]) {
         this.markets[market].volume = promise;
+        this.setUpdateTime(market);
       }
     }
     return;
@@ -216,6 +223,7 @@ class BitvavoMarket {
         delete this.markets[entry];
       }
     }
+    this.updateMarkets();
     this.pruneTimeout = setTimeout(() => this.prune(), 1000 * 60 * 5);
   }
 
@@ -333,6 +341,12 @@ class BitvavoMarket {
     if (limit && limit < cost + 10) return false;
     else return true;
   }
+
+  private setUpdateTime(market: string): void {
+    if (this.markets[market]) {
+      this.markets[market].updatedAt = Date.now();
+    }
+  }
 }
-const myObj = new BitvavoMarket();
-export default myObj;
+const bitvavoMarketState = new BitvavoMarket();
+export default bitvavoMarketState;

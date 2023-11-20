@@ -19,8 +19,6 @@ export type Ticker24h = {
 
 export type Ticker24hArray = Ticker24h[];
 
-type StringTuple = [string, string];
-
 export type OrderBook = {
   market: string;
   nonce: number;
@@ -57,6 +55,8 @@ export type Market = {
   pricePrecision: string;
   minOrderInQuoteAsset: string;
   minOrderInBaseAsset: string;
+  maxOrderInQuoteAsset: string;
+  maxOrderInBaseAsset: string;
   orderTypes: string[];
 };
 export type Markets = Market[];

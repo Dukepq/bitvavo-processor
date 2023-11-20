@@ -55,22 +55,18 @@ class BitvavoMarket {
       console.error(
         "Something went wrong while trying to updating markets: " + err
       );
-      console.log("retrying initiation in 30s");
+      console.log("retrying initializtion in 30s");
       setTimeout(this.init.bind(this), 1000 * 30);
     }
   }
 
   async update() {
-    await this.updateVolumeOnAllMarkets(1000 * 60 * 6);
-    console.log("finished updating volume...");
+    await this.updateVolumeOnAllMarkets(1000 * 60 * 10);
     await this.updateAllOrderBookDerivedValues();
-    console.log("finished updating order book derived values...");
-    console.log("setting timeout for next update...");
-    this.updateTimeout = setTimeout(this.update.bind(this), 1000 * 60);
+    this.updateTimeout = setTimeout(this.update.bind(this), 1000 * 30);
   }
 
   async updateAllOrderBookDerivedValues() {
-    /* ---------WORKS--------- */
     for (let entry in this.markets) {
       const orderBookDerivatives = await this.extractFromOrderBook(entry, 0.05);
       if (!orderBookDerivatives) continue;
@@ -84,11 +80,10 @@ class BitvavoMarket {
       Object.assign(this.markets[entry], rest);
       this.setUpdateTime(entry);
     }
-    /* ---------WORKS--------- */
 
     /* ---
     While occasionaly succeeding in fetching the requested data below method usually
-    runs into errors (Timeout Error) fails to retreive all pairs from Bitvavo, potentially because
+    runs into errors (Timeout Error) fails to retreive all pairs from Bitvavo, likely because
     too much data is requested in too short a timeframe (full order book information of over 200 assets ~20Mb)
     --- */
     // const promiseArray: Promise<OrderBookExtract>[] = [];

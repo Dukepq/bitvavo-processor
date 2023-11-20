@@ -5,9 +5,11 @@ import "dotenv/config";
 const PORT = process.env.PORT || 5100;
 import { limiter } from "./config/rateLimitOptions";
 import marketsRouter from "./routes/markets";
+import assetsRouter from "./routes/assets";
 
 app.use(limiter);
 app.use("/api/v1/markets", marketsRouter);
+app.use("/api/v1/assets", assetsRouter);
 
 app.get("/ping", (req: Request, res: Response) => {
   res.json({ succes: true, message: "pong" });

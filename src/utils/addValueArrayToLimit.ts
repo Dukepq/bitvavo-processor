@@ -1,8 +1,5 @@
 import stringToNum from "./stringToNum";
-export function addBids(
-  bids: [string, string][],
-  depth: number
-): number | null {
+export function addBids(bids: [string, string][], depth: number): number {
   const price = stringToNum(bids[0][0]);
   let euroBidDepth = 0;
   for (let bid of bids) {
@@ -15,13 +12,13 @@ export function addBids(
       euroBidDepth += euroValue;
     }
   }
-  return null;
+  return euroBidDepth;
 }
 
 export default function addAsks(
   asks: [string, string][],
   depth: number
-): number | null {
+): number {
   const price = stringToNum(asks[0][0]);
   let euroAskDepth = 0;
   for (let ask of asks) {
@@ -34,5 +31,5 @@ export default function addAsks(
       euroAskDepth += euroValue;
     }
   }
-  return null;
+  return euroAskDepth;
 }
